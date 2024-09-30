@@ -87,6 +87,7 @@ class Visualizer:
             ic_range: tuple[float, float],
             idx: int = None,
     ) -> None:
+        """TODO dont look at me yet"""
         if idx is not None:
             x, y = self.x[:, idx], self.y[:, idx]
             x_test, mu = self.x_test[:, idx], self.mu[:, idx]
