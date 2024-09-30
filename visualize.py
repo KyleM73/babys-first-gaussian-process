@@ -34,10 +34,10 @@ class Visualizer:
         x = np.linspace(
             np.min(self.x), np.max(self.x), self.resolution, True
         )[:, np.newaxis]
-        z = self.kernel(x, x, self.scale)
+        cov_xx = self.kernel(x, x, self.scale)
 
         fig, ax = plt.subplots()
-        im = ax.imshow(z, origin="lower")
+        im = ax.imshow(cov_xx, origin="lower")
         ax.set_xticks(
             [0, self.resolution],
             [f"{np.min(self.x):.2f}", f"{np.max(self.x):.2f}"]
@@ -60,8 +60,8 @@ class Visualizer:
             x, y = self.x[:, idx], self.y[:, idx]
             x_test, mu = self.x_test[:, idx], self.mu[:, idx]
         else:
-            x, y = self.x.ravel(), self.y.ravel()
-            x_test, mu = self.x_test.ravel(), self.mu.ravel()
+            x, y = self.x[:, 0].ravel(), self.y[:, 0].ravel()
+            x_test, mu = self.x_test[:, 0].ravel(), self.mu[:, 0].ravel()
         samples = np.random.multivariate_normal(
             mu, self.cov, self.n_samples
         )
@@ -73,9 +73,9 @@ class Visualizer:
         ax.plot(x_test, mu, label="predicted mean")
         if plot_realizations:
             for i, sample in enumerate(samples):
-                ax.plot(x_test, sample)
+                ax.plot(x_test, sample, label=f"gp realization ({i})")
 
-        ci = 1.96 * np.sqrt(np.diag(self.cov))
+        ci = 1.96 * np.sqrt(np.diag(self.cov))  # 95% ci
         ax.fill_between(
             x_test, mu - ci, mu + ci, alpha=0.2,
             label="95% confidence interval")
@@ -93,24 +93,31 @@ class Visualizer:
         else:
             x, y = self.x.ravel(), self.y.ravel()
             x_test, mu = self.x_test.ravel(), self.mu.ravel()
-        ic_linspace = np.linspace(ic_range[0], ic_range[1], x.shape[0])
-        xx, ic = np.meshgrid(x, ic_linspace)
-        y_ic = self.dynamics(xx, ic)
-        xx, ic, y_ic = xx.ravel(), ic.ravel(), y_ic.ravel()
-        x_in = np.vstack([xx, ic]).T
+        ic_linspace = np.linspace(ic_range[0], ic_range[1], x.shape[0], True)
+        x_mesh, ic_mesh = np.meshgrid(x, ic_linspace)
+        y_ic = self.dynamics(x_mesh, ic_mesh)
+
+        x_in = np.stack(
+            [x[:, np.newaxis], ic_linspace[:, np.newaxis]],
+            axis=1,
+        ).reshape((-1, 2))
+
         self.gp.fit(x_in, y_ic)
         ic_linspace_test = np.linspace(
             ic_range[0], ic_range[1], x_test.shape[0]
         )
-        xx_test, ic_test = np.meshgrid(x_test, ic_linspace_test)
-        x_test_in = np.vstack([xx_test.ravel(), ic_test.ravel()]).T
-        mu, cov = self.gp.predict(x_test_in)
+        x_mesh_test, ic_mesh_test = np.meshgrid(x_test, ic_linspace_test)
+        x_in_test = np.stack(
+            [x_test[:, np.newaxis], ic_linspace_test[:, np.newaxis]],
+            axis=1,
+        ).reshape((-1, 2))
+        mu, cov = self.gp.predict(x_in_test)
 
         fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
         mu = mu.reshape((x_test.shape[0], x_test.shape[0]))
         cov = np.diag(cov).reshape((x_test.shape[0], x_test.shape[0]))
         surf = ax.plot_surface(
-            xx_test, ic_test, mu, facecolors=cm.viridis(cov)
+            x_mesh_test, ic_mesh_test, mu, facecolors=cm.viridis(cov)
         )
         ax.scatter3D(x, ic_linspace, y, c="r", marker="o")
         fig.colorbar(surf, ax=ax, label="Covariance")

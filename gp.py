@@ -23,8 +23,8 @@ class GaussianProcess:
         K_s = self.kernel(self.x, x_test, self.scale)
         K_ss = self.kernel(x_test, x_test, self.scale) + \
             self.noise * np.eye(len(x_test))
-        mu_s = K_s.T.dot(self.K_inv).dot(self.y)
-        cov_s = K_ss - K_s.T.dot(self.K_inv).dot(K_s)
+        mu_s = K_s.T @ self.K_inv @ self.y
+        cov_s = K_ss - K_s.T @ self.K_inv @ K_s
         return mu_s, cov_s
 
     def reset(self) -> None:

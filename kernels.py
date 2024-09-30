@@ -13,8 +13,8 @@ def linear(
         xj_x = xj[:, 0].reshape((-1, 1))
         linear_x = linear(xi_x, xj_x, scale)
 
-        xi_ic = xi[:, 0].reshape((-1, 1))
-        xj_ic = xj[:, 0].reshape((-1, 1))
+        xi_ic = xi[:, 1].reshape((-1, 1))
+        xj_ic = xj[:, 1].reshape((-1, 1))
         linear_ic = linear(xi_ic, xj_ic, scale)
 
         return linear_x * linear_ic

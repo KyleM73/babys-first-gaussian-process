@@ -17,11 +17,20 @@ x_test_range = (-1.5, 1.5)
 ic_range = (-1, 1)
 
 # sample dynamics
-x = np.random.uniform(low=x_range[0], high=x_range[1], size=n_train)[:, np.newaxis]
+x = np.random.uniform(
+    low=x_range[0],
+    high=x_range[1],
+    size=(n_train, 1)
+)
 y = dynamics(x) + dynamics_noise_scale * (2 * np.random.random(x.shape) - 1)
 
 # define test points
-x_test = np.linspace(x_test_range[0], x_test_range[1], n_test, True)[:, np.newaxis]
+x_test = np.linspace(
+    x_test_range[0],
+    x_test_range[1],
+    num=n_test,
+    endpoint=True,
+)[:, np.newaxis]
 
 # fit gp
 gp = GaussianProcess(kernel=kernel, scale=scale)
