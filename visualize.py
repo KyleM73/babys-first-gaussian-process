@@ -1,7 +1,7 @@
 from typing import Callable
 
 from copy import deepcopy
-from matplotlib import cm
+from matplotlib import cm, ticker
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -87,45 +87,56 @@ class Visualizer:
             ic_range: tuple[float, float],
             idx: int = None,
     ) -> None:
-        """TODO dont look at me yet"""
-        if idx is not None:
-            x, y = self.x[:, idx], self.y[:, idx]
-            x_test, mu = self.x_test[:, idx], self.mu[:, idx]
-        else:
-            x, y = self.x.ravel(), self.y.ravel()
-            x_test, mu = self.x_test.ravel(), self.mu.ravel()
-        ic_linspace = np.linspace(ic_range[0], ic_range[1], x.shape[0], True)
-        x_mesh, ic_mesh = np.meshgrid(x, ic_linspace)
-        y_ic = self.dynamics(x_mesh, ic_mesh)
+        # fit multivariate gp
+        n = self.x.shape[0]
+        ic_linspace = np.linspace(ic_range[0], ic_range[1], n, True)
+        x_mesh, ic_mesh = np.meshgrid(self.x, ic_linspace)
+        x_train = np.vstack([x_mesh.ravel(), ic_mesh.ravel()]).T
+        y_mesh = self.dynamics(x_mesh, ic_mesh)
+        y_train = y_mesh.ravel()
+        self.gp.fit(x_train, y_train)
 
-        x_in = np.stack(
-            [x[:, np.newaxis], ic_linspace[:, np.newaxis]],
-            axis=1,
-        ).reshape((-1, 2))
+        # predict y_test
+        n_test = self.x_test.shape[0]
+        ic_linspace_test = np.linspace(ic_range[0], ic_range[1], n_test, True)
+        x_mesh_test, ic_mesh_test = np.meshgrid(self.x_test, ic_linspace_test)
+        x_test = np.vstack([x_mesh_test.ravel(), ic_mesh_test.ravel()]).T
+        mu, cov = self.gp.predict(x_test)
 
-        self.gp.fit(x_in, y_ic)
-        ic_linspace_test = np.linspace(
-            ic_range[0], ic_range[1], x_test.shape[0]
+        # plot ground truth
+        y_true_mesh = self.dynamics(x_mesh_test, ic_mesh_test)
+        y_true = y_true_mesh.ravel()
+
+        fig_true, ax_true = plt.subplots(subplot_kw={"projection": "3d"})
+        ax_true.plot_surface(
+            x_mesh_test, ic_mesh_test, y_true_mesh,
         )
-        x_mesh_test, ic_mesh_test = np.meshgrid(x_test, ic_linspace_test)
-        x_in_test = np.stack(
-            [x_test[:, np.newaxis], ic_linspace_test[:, np.newaxis]],
-            axis=1,
-        ).reshape((-1, 2))
-        mu, cov = self.gp.predict(x_in_test)
+        ax_true.set_xlabel("x (time)")
+        ax_true.set_ylabel("ic (initial condition)")
+        ax_true.set_zlabel("y")
+        ax_true.set_title("true dynamics")
+        ax_true.xaxis.set_major_locator(ticker.MultipleLocator(0.5))
+        ax_true.yaxis.set_major_locator(ticker.MultipleLocator(0.5))
+        fig_true.tight_layout()
+
+        # plot multivariate gp
+        mu_mesh = mu.reshape(x_mesh_test.shape)
+        std = np.sqrt(np.diag(cov))
+        std = std.reshape(x_mesh_test.shape)
+        std_norm = (std - std.min()) / (std.max() - std.min())
 
         fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-        mu = mu.reshape((x_test.shape[0], x_test.shape[0]))
-        cov = np.diag(cov).reshape((x_test.shape[0], x_test.shape[0]))
         surf = ax.plot_surface(
-            x_mesh_test, ic_mesh_test, mu, facecolors=cm.viridis(cov)
+            x_mesh_test, ic_mesh_test, mu_mesh, facecolors=cm.viridis(std_norm)
         )
-        ax.scatter3D(x, ic_linspace, y, c="r", marker="o")
-        fig.colorbar(surf, ax=ax, label="Covariance")
-        ax.set_xlabel("x (Time)")
-        ax.set_ylabel("ic (Initial Condition)")
+        ax.scatter3D(x_mesh, ic_mesh, y_mesh, c="r", marker="o")
+        fig.colorbar(surf, ax=ax, label="covariance")
+        ax.set_xlabel("x (time)")
+        ax.set_ylabel("ic (initial condition)")
         ax.set_zlabel("y")
-        ax.set_title("Gaussian Process Prediction Surface")
+        ax.set_title("gaussian process prediction surface")
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(0.5))
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(0.5))
         fig.tight_layout()
 
     def show(self) -> None:

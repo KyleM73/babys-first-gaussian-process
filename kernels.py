@@ -1,4 +1,36 @@
+from typing import Callable
+
 import numpy as np
+
+
+class kernel_cls:
+    def __init__(self, func: Callable | list[Callable]) -> None:
+        self.func = func
+
+    def __call__(
+        self,
+        xi: np.ndarray,
+        xj: np.ndarray,
+        scale: np.ndarray,
+    ) -> np.ndarray:
+        ni = xi.shape[0]
+        nj = xj.shape[0]
+        assert xi.shape[1:] == xj.shape[1:], \
+            f"Expected dim(xi) == dim(xj), received {xi.shape}, {xj.shape}"
+        xi = xi.reshape((ni, -1))
+        xj = xj.reshape((nj, -1))
+        if isinstance(self.func, list):
+            ret = 1
+            for f in self.func:
+                ret *= f(xi, xj, scale)
+            return ret
+        return self.func(xi, xj, scale)
+
+    @property
+    def __name__(self) -> str:
+        if isinstance(self.func, list):
+            return "".join([f.__name__ for f in self.func])
+        return self.func.__name__
 
 
 def linear(
@@ -8,17 +40,7 @@ def linear(
 ) -> np.ndarray:
     assert scale.size >= 3, \
         f"Expected 3 hyperparameters, received {scale.size}"
-    if len(xi.shape) > 1 and xi.shape[1] > 1:
-        xi_x = xi[:, 0].reshape((-1, 1))
-        xj_x = xj[:, 0].reshape((-1, 1))
-        linear_x = linear(xi_x, xj_x, scale)
-
-        xi_ic = xi[:, 1].reshape((-1, 1))
-        xj_ic = xj[:, 1].reshape((-1, 1))
-        linear_ic = linear(xi_ic, xj_ic, scale)
-
-        return linear_x * linear_ic
-    return scale[0] + scale[1] * (xi - scale[2]) * (xj.T - scale[2])
+    return scale[0] + scale[1] * (xi - scale[2]) @ (xj.T - scale[2])
 
 
 def quadratic(
@@ -36,12 +58,18 @@ def periodic(
 ) -> np.ndarray:
     assert scale.size >= 3, \
         f"Expected 3 hyperparameters, received {scale.size}"
-    if len(xi.shape) > 1 and xi.shape[1] > 1:
-        xi = xi[:, 0].reshape((-1, 1))
-        xj = xj[:, 0].reshape((-1, 1))
+    xi = np.atleast_2d(xi)
+    xj = np.atleast_2d(xj)
+
+    if xi.ndim > 2:
+        xi = xi.reshape(xi.shape[0], -1)
+    if xj.ndim > 2:
+        xj = xj.reshape(xj.shape[0], -1)
+
+    dist = np.linalg.norm(xi[:, None] - xj[None, :], axis=2)
     return scale[0] ** 2 * np.exp(
         2 / scale[1] ** 2 *
-        np.sin(np.pi / scale[2] * np.abs(xi - xj.T)) ** 2
+        np.sin(np.pi / scale[2] * dist) ** 2
     )
 
 
@@ -52,8 +80,7 @@ def rbf(
 ) -> np.ndarray:
     assert scale.size >= 2, \
         f"Expected 2 hyperparameters, received {scale.size}"
-    if len(xi.shape) > 1 and xi.shape[1] > 1:
-        xi = xi[:, 0].reshape((-1, 1))
-        xj = xj[:, 0].reshape((-1, 1))
+    sq_dist = np.sum(xi**2, axis=1).reshape(-1, 1) + np.sum(xj**2, axis=1) \
+        - 2 * xi @ xj.T
     return scale[0] ** 2 * \
-        np.exp(-np.abs(xi - xj.T) ** 2 / (2 * scale[1] ** 2))
+        np.exp(-sq_dist / (2 * scale[1] ** 2))
